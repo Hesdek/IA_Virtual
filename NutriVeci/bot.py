@@ -1,12 +1,12 @@
 import logging
 from telegram import Update  # Importa la clase Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes, CallbackQueryHandler
 from config import BOT_TOKEN
 from handlers.commands import (
     registrar, recibir_nombre, recibir_edad, recibir_peso,
-    recibir_altura, recibir_objetivo, recibir_metas, cancelar
+    recibir_altura, recibir_objetivo, recibir_metas, manejar_alergias,  # Agregar recibir_alergias
+    cancelar, recomendacion_recetas, contar_calorias, salir, manejar_alergias  # Agregar manejar_alergias
 )
-#from db.models import create_tables
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,7 +29,7 @@ def main():
             3: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_altura)],
             4: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_objetivo)],
             5: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_metas)],
-            6: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_alergias)],
+            6: [MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_alergias)],
         },
         fallbacks=[CommandHandler("cancelar", cancelar)],
     )
@@ -41,6 +41,7 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("🍽️ Recomendación de recetas"), recomendacion_recetas))
     app.add_handler(MessageHandler(filters.Regex("📊 Contar calorías del día"), contar_calorias))
     app.add_handler(MessageHandler(filters.Regex("🚪 Salir"), salir))
+    app.add_handler(CallbackQueryHandler(manejar_alergias, pattern="^alergia_"))
 
     print("NutriBot en marcha 🚀")
     app.run_polling()

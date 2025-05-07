@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 
 # Estados de la conversación
@@ -26,7 +26,7 @@ async def recibir_peso(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ALTURA
 
 async def recibir_altura(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data_temp[update.effective_chat.id]["altura"] = float(update.message.text)
+    user_data_temp[update.effective_chat.id]["altura"] = float(update.message.text) / 100  # Convertir a metros
     
     # Crear un teclado con opciones
     keyboard = [["🏋️ Ganar peso", "⚡ Perder peso"], ["⚖️ Mantener peso"]]
@@ -59,46 +59,92 @@ async def recibir_metas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Crear un teclado con opciones para alergias
     keyboard = [
-        ["🌾 Gluten", "🥜 Maní", "🍳 Huevo"],
-        ["🥛 Lactosa", "🐟 Pescado", "🍤 Mariscos"],
-        ["❌ Ninguna"]
+        [InlineKeyboardButton("🌾 Gluten", callback_data="alergia_gluten")],
+        [InlineKeyboardButton("🥜 Maní", callback_data="alergia_mani")],
+        [InlineKeyboardButton("🍳 Huevo", callback_data="alergia_huevo")],
+        [InlineKeyboardButton("🥛 Lactosa", callback_data="alergia_lactosa")],
+        [InlineKeyboardButton("🐟 Pescado", callback_data="alergia_pescado")],
+        [InlineKeyboardButton("🍤 Mariscos", callback_data="alergia_mariscos")],
+        [InlineKeyboardButton("❌ Ninguna", callback_data="alergia_ninguna")],
+        [InlineKeyboardButton("✅ Listo", callback_data="alergia_listo")]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "🤔 ¿Tienes alguna alergia alimentaria? Selecciona una opción:",
+        "🤔 ¿Tienes alguna alergia alimentaria? Selecciona una o varias opciones y presiona '✅ Listo' cuando termines:",
         reply_markup=reply_markup
     )
     return ALERGIAS
 
-async def recibir_alergias(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data_temp[update.effective_chat.id]["alergias"] = update.message.text
-    data = user_data_temp.pop(update.effective_chat.id)
+async def manejar_alergias(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # Obtener la alergia seleccionada
+    alergia = query.data.replace("alergia_", "")
+    
+    # Inicializar la lista de alergias si no existe
+    if "alergias" not in user_data_temp[query.message.chat_id]:
+        user_data_temp[query.message.chat_id]["alergias"] = []
+    
+    # Si el usuario presiona "Listo", pasa al resumen final
+    if alergia == "listo":
+        alergias = ", ".join(user_data_temp[query.message.chat_id]["alergias"])
+        if not alergias:
+            alergias = "Ninguna"
+        await query.edit_message_text(
+            f"⚠️ Has seleccionado las siguientes alergias: {alergias}"
+        )
+        return await mostrar_resumen(query.message.chat_id, context)
+    
+    # Si selecciona "Ninguna", limpia las alergias y pasa al resumen
+    if alergia == "ninguna":
+        user_data_temp[query.message.chat_id]["alergias"] = ["Ninguna"]
+        await query.edit_message_text("⚠️ No tienes alergias alimentarias.")
+        return await mostrar_resumen(query.message.chat_id, context)
+    
+    # Agregar o quitar la alergia seleccionada
+    if alergia in user_data_temp[query.message.chat_id]["alergias"]:
+        user_data_temp[query.message.chat_id]["alergias"].remove(alergia)
+    else:
+        user_data_temp[query.message.chat_id]["alergias"].append(alergia)
+    
+    # Actualizar el mensaje con las alergias seleccionadas
+    alergias = ", ".join(user_data_temp[query.message.chat_id]["alergias"])
+    await query.edit_message_text(
+        f"🤔 ¿Tienes alguna alergia alimentaria? Selecciona una o varias opciones y presiona '✅ Listo' cuando termines:\n\n"
+        f"Seleccionadas: {alergias}"
+    )
+
+async def mostrar_resumen(chat_id, context):
+    data = user_data_temp.pop(chat_id)
+    
+    # Calcular el IMC
+    imc = data["peso"] / (data["altura"] ** 2)
+    if imc < 18.5:
+        clasificacion_imc = "Bajo peso"
+    elif 18.5 <= imc < 24.9:
+        clasificacion_imc = "Peso normal"
+    elif 25 <= imc < 29.9:
+        clasificacion_imc = "Sobrepeso"
+    else:
+        clasificacion_imc = "Obesidad"
     
     # Resumen final
-    await update.message.reply_text(
-        "✅ ¡Registro completo! 🎉\n"
-        f"Gracias, {data['nombre']} 🙌. Aquí está un resumen de tus datos:\n\n"
-        f"📅 Edad: {data['edad']} años\n"
-        f"⚖️ Peso: {data['peso']} kg\n"
-        f"📏 Altura: {data['altura']} cm\n"
-        f"🎯 Objetivo: {data['objetivo']}\n"
-        f"✨ Metas adicionales: {data['metas']}\n"
-        f"⚠️ Alergias: {data['alergias']}\n\n"
-        "¡Espero poder ayudarte a alcanzar tus metas! 💪"
-    )
-    
-    # Mostrar el menú principal
-    keyboard = [
-        ["🍽️ Recomendación de recetas", "📊 Contar calorías del día"],
-        ["🚪 Salir"]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
-    await update.message.reply_text(
-        "📋 Menú principal:\n"
-        "Selecciona una opción para continuar:",
-        reply_markup=reply_markup
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "✅ ¡Registro completo! 🎉\n"
+            f"Gracias, {data['nombre']} 🙌. Aquí está un resumen de tus datos:\n\n"
+            f"📅 Edad: {data['edad']} años\n"
+            f"⚖️ Peso: {data['peso']} kg\n"
+            f"📏 Altura: {data['altura'] * 100:.1f} cm\n"
+            f"🎯 Objetivo: {data['objetivo']}\n"
+            f"✨ Metas adicionales: {data['metas']}\n"
+            f"⚠️ Alergias: {', '.join(data['alergias'])}\n\n"
+            f"📊 Tu IMC es: {imc:.1f} ({clasificacion_imc})\n\n"
+            "¡Espero poder ayudarte a alcanzar tus metas! 💪"
+        )
     )
     return ConversationHandler.END
 
